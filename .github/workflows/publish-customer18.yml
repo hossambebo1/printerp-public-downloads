@@ -1,0 +1,35 @@
+name: Publish verified customer Android build 18
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: publish-customer-build18
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download the public signed APK and check its exact digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --max-time 180 \
+            --output PrintERP-Customer-0.6.10-build18.apk \
+            https://printerp-client-downloads.netlify.app/PrintERP-Customer-0.6.10-build18.apk
+          printf '%s  %s\n' \
+            2eecae22929e4a16aa038ed36069c8f3bc4571f47289b476c5f9592f7b31e4c7 \
+            PrintERP-Customer-0.6.10-build18.apk > SHA256SUMS.txt
+          sha256sum --check SHA256SUMS.txt
+          test "$(stat --format=%s PrintERP-Customer-0.6.10-build18.apk)" = 42438113
+      - name: Publish only the verified APK and checksum
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release upload customer-v0.6.10-build18 \
+            PrintERP-Customer-0.6.10-build18.apk SHA256SUMS.txt --clobber
+          gh release edit customer-v0.6.10-build18 --draft=false --latest
