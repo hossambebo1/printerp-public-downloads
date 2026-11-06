@@ -15,7 +15,32 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl --fail --location --retry 3 --retry-all-errors --max-time 180 --output PrintERP-Customer-0.6.10-build19.apk https://evanescence-parallel-wolf-anyone.trycloudflare.com/downloads/customer.apk
+          python - <<'PY'
+          import concurrent.futures,hashlib,json,pathlib,time,urllib.request
+          SIZE=42440649
+          def part(start):
+              end=min(SIZE-1,start+262144-1)
+              for attempt in range(12):
+                  try:
+                      with urllib.request.urlopen('https://bebo-pos1-clients.web.app/mobile-service.json?t='+str(time.time_ns()),timeout=20) as response:
+                          config=json.load(response)
+                      assert config.get('ready') and config['serviceUrl'].startswith('https://')
+                      request=urllib.request.Request(config['serviceUrl'].rstrip('/')+'/downloads/customer.apk?release19='+str(time.time_ns()),headers={'Range':f'bytes={start}-{end}','Cache-Control':'no-cache'})
+                      with urllib.request.urlopen(request,timeout=30) as response:
+                          assert response.status==206 and response.headers['Content-Range']==f'bytes {start}-{end}/{SIZE}'
+                          data=response.read(262145)
+                      assert len(data)==end-start+1
+                      print('Verified range',start,end,flush=True)
+                      return data
+                  except Exception as error:
+                      if attempt==11:raise
+                      print('Retry range',start,'attempt',attempt+1,type(error).__name__,flush=True)
+                      time.sleep(min(5,attempt+1))
+          with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+              data=b''.join(pool.map(part,range(0,SIZE,262144)))
+          assert len(data)==SIZE and hashlib.sha256(data).hexdigest()=='bfd0365be0c4d4709907f5c435635581304f174e8acb3dc5e8bdcdce0a16b6c0'
+          pathlib.Path('PrintERP-Customer-0.6.10-build19.apk').write_bytes(data)
+          PY
           printf '%s  %s\n' bfd0365be0c4d4709907f5c435635581304f174e8acb3dc5e8bdcdce0a16b6c0 PrintERP-Customer-0.6.10-build19.apk > SHA256SUMS.txt
           sha256sum --check SHA256SUMS.txt
           test "$(stat --format=%s PrintERP-Customer-0.6.10-build19.apk)" = 42440649
