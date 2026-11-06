@@ -1,0 +1,30 @@
+name: Publish verified customer Android build 19
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: publish-customer-build19
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Fetch signed public APK and verify its exact hash and size
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --retry-all-errors --max-time 180 --output PrintERP-Customer-0.6.10-build19.apk https://evanescence-parallel-wolf-anyone.trycloudflare.com/downloads/customer.apk
+          printf '%s  %s\n' bfd0365be0c4d4709907f5c435635581304f174e8acb3dc5e8bdcdce0a16b6c0 PrintERP-Customer-0.6.10-build19.apk > SHA256SUMS.txt
+          sha256sum --check SHA256SUMS.txt
+          test "$(stat --format=%s PrintERP-Customer-0.6.10-build19.apk)" = 42440649
+      - name: Publish only the verified APK and checksum
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release upload customer-v0.6.10-build19 PrintERP-Customer-0.6.10-build19.apk SHA256SUMS.txt --clobber
+          gh release edit customer-v0.6.10-build19 --draft=false --latest
